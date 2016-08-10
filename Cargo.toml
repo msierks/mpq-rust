@@ -10,3 +10,4 @@ keywords = ["mpq", "archive"]
 include = ["src/*", "Cargo.toml", "LICENSE", "README.md"]
 
 [dependencies]
+byteorder = "0.5"
