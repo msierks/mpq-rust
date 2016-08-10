@@ -1,0 +1,12 @@
+[package]
+name = "mpq"
+version = "0.1.0"
+authors = ["Michael Sierks <msierks117@gmail.com>"]
+license = "MIT"
+description = "A library for reading MPQ archives"
+repository = "https://github.com/msierks/mpq-rust"
+readme = "README.md"
+keywords = ["mpq", "archive"]
+include = ["src/*", "Cargo.toml", "LICENSE", "README.md"]
+
+[dependencies]
