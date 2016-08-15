@@ -9,5 +9,11 @@ readme = "README.md"
 keywords = ["mpq", "archive"]
 include = ["src/*", "Cargo.toml", "LICENSE", "README.md"]
 
+[[bin]]
+name = "mpq"
+doc = false
+
 [dependencies]
 byteorder = "0.5"
+flate2 = "0.2"
+getopts = "0.2"
