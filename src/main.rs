@@ -1,15 +1,4 @@
 
-// openArchive
-// getFileSize -> get file's size
-// fileSetLocale -> let langague of file
-// 
-// readFile -> read file into buffer
-// addFile -> write file from buffer
-// renameFile -> obvious
-// deleteFile -> doesn't actually delete file
-// compactArchive -> remove deleted and duplicate files
-// close -> this is implicit when we leave scope
-
 extern crate getopts;
 extern crate mpq;
 
