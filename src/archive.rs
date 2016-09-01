@@ -216,9 +216,9 @@ impl File {
         let block = &archive.block_table[hash.block_index as usize];
 
         if block.flags & FILE_PATCH_FILE != 0 {
-            panic!("FIXME: patch file");
+            return Err(Error::new(ErrorKind::Other, "Patch file not supported"));
         } else if block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
-            panic!("FIXME: single unit file");
+            return Err(Error::new(ErrorKind::Other, "Single unit file not supported"));
         } else { // read as sector based MPQ file
             try!(self.read_blocks(&mut archive.file, &block, buf));
         }
@@ -255,19 +255,19 @@ impl File {
             try!(file.read_exact(&mut in_buff));
 
             if block.flags & FILE_ENCRYPTED != 0 {
-                panic!("FixMe: FILE_ENCRYPTED");
+                return Err(Error::new(ErrorKind::Other, "Block encryption not supported"));
             }
 
             if block.flags & FILE_IMPLODE != 0 {
-                panic!("FixMe: FILE_IMPLODE");
+                return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
             }
 
             if block.flags & FILE_COMPRESS != 0 {
-                let size = decompress(&mut in_buff, &mut out_buf[read as usize..]);
+                let size = try!(decompress(&mut in_buff, &mut out_buf[read as usize..]));
 
                 read += size;
             } else {
-                panic!("NOT COMPRESSED");
+                return Err(Error::new(ErrorKind::Other, "Block is not compressed")); // FixMe: should just copy bytes into out_buf
             }
 
         }

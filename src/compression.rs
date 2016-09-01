@@ -1,5 +1,6 @@
 
 use flate2;
+use std::io::{Error, ErrorKind};
 
 const COMPRESSION_HUFFMAN:      u8 = 0x01;
 const COMPRESSION_ZLIB:         u8 = 0x02;
@@ -10,7 +11,7 @@ const COMPRESSION_ADPCM_STEREO: u8 = 0x40;
 const COMPRESSION_ADPCM_MONO:   u8 = 0x80;
 const COMPRESSION_LZMA:         u8 = 0x12;
 
-pub fn decompress(data: &mut [u8], out: &mut [u8]) -> u64 {
+pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<u64, Error> {
     let compression_type = data[0];
 
     if compression_type & COMPRESSION_HUFFMAN != 0 {
@@ -20,9 +21,12 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> u64 {
     if compression_type & COMPRESSION_ZLIB != 0 {
         let mut zlib = flate2::Decompress::new(true);
 
-        zlib.decompress(&data[1..], out, flate2::Flush::None);
+        match zlib.decompress(&data[1..], out, flate2::Flush::None) {
+            Ok(_) => {},
+            Err(e) => return Err(Error::new(ErrorKind::Other, e))
+        }
 
-        return zlib.total_out();
+        return Ok(zlib.total_out());
     }
 
     if compression_type & COMPRESSION_PKZIP != 0 {
@@ -49,5 +53,5 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> u64 {
        println!("FixMe: COMPRESSION_LZMA");
     }
 
-    0
+    return Err(Error::new(ErrorKind::Other, "No compression type found"));
 }
