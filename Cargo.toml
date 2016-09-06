@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Michael Sierks <msierks117@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "A library for reading MPQ archives"
+documentation = "https://docs.rs/mpq"
 repository = "https://github.com/msierks/mpq-rust"
 readme = "README.md"
 keywords = ["mpq", "archive"]
