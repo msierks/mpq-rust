@@ -268,30 +268,25 @@ impl File {
         } else if block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
             return self.read_block(block.packed_size as usize, &mut archive.file, archive.offset, &block, buf);
         } else { // read as sector based MPQ file
-            return self.read_blocks(&mut archive.file, archive.offset, &block, buf);
+            return self.read_blocks(&mut archive.file, archive.offset, &block, buf, archive.block_size);
         }
     }
 
-    fn read_blocks(&self, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8]) -> Result<u64, Error> {
+    fn read_blocks(&self, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8], block_size: u32) -> Result<u64, Error> {
         let mut sector_buff: Vec<u8> = vec![0; 4];
         let mut sector_offsets: Vec<u32> = Vec::new();
 
         try!(file.seek(SeekFrom::Start(block.offset as u64 + offset)));
 
-        loop {
+        let num_sectors = (block.unpacked_size / block_size) + 1;
+
+        for _ in 0..num_sectors + 1 {
             try!(file.read_exact(&mut sector_buff));
 
-            let offset = LittleEndian::read_u32(&sector_buff);
-
-            if block.packed_size == offset {
-                break;
-            }
-
-            sector_offsets.push(offset);
+            sector_offsets.push(LittleEndian::read_u32(&sector_buff));
         }
 
         let mut read:u64 = 0;
-
         for i in 0..sector_offsets.len()-1 {
             let sector_offset = sector_offsets[i];
             let sector_size   = sector_offsets[i+1] - sector_offset;
