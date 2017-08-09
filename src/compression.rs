@@ -1,4 +1,5 @@
 
+use bzip2;
 use flate2;
 use std::io::{Error, ErrorKind};
 
@@ -34,7 +35,14 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<u64, Error> {
     }
 
     if compression_type & COMPRESSION_BZIP2 != 0 {
-        println!("FixMe: COMPRESSION_BZIP2");
+        let mut decompress = bzip2::Decompress::new(true);
+
+        match decompress.decompress(&data[1..], out) {
+            Ok(_) => {},
+            Err(e) => return Err(Error::new(ErrorKind::Other, e))
+        }
+
+        return Ok(decompress.total_out());
     }
 
     if compression_type & COMPRESSION_SPARSE != 0 {

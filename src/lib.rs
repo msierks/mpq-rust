@@ -1,5 +1,6 @@
 
 extern crate byteorder;
+extern crate bzip2;
 extern crate flate2;
 
 pub mod archive;

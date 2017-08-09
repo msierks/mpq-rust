@@ -16,5 +16,6 @@ doc = false
 
 [dependencies]
 byteorder = "0.5"
+bzip2 = "0.3"
 flate2 = "0.2"
 getopts = "0.2"
