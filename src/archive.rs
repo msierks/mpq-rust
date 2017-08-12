@@ -28,7 +28,7 @@ struct Header {
     header_size: u32,
     archive_size: u32,
     format_version: u16, // 0 = Original, 1 = Extended
-    block_size: u16,
+    sector_size_shift: u16,
     hash_table_offset: u32,
     block_table_offset: u32,
     hash_table_count: u32,
@@ -46,7 +46,7 @@ impl Header {
             header_size: LittleEndian::read_u32(&src[0x04..]),
             archive_size: LittleEndian::read_u32(&src[0x08..]),
             format_version: LittleEndian::read_u16(&src[0x0C..]),
-            block_size: LittleEndian::read_u16(&src[0x0E..]),
+            sector_size_shift: LittleEndian::read_u16(&src[0x0E..]),
             hash_table_offset: LittleEndian::read_u32(&src[0x10..]),
             block_table_offset: LittleEndian::read_u32(&src[0x14..]),
             hash_table_count: LittleEndian::read_u32(&src[0x18..]),
@@ -131,7 +131,7 @@ pub struct Archive {
     header: Header,
     hash_table: Vec<Hash>,
     block_table: Vec<Block>,
-    block_size: u32, // default size of single file sector
+    sector_size: u32,
     offset: u64,
 }
 
@@ -200,14 +200,14 @@ impl Archive {
             block_table.push(Block::new(&block_buff[x as usize * mem::size_of::<Block>()..]));
         }
 
-        let block_size = 512 << header.block_size;
+        let sector_size = 512 << header.sector_size_shift;
 
         Ok(Archive {
             file: file,
             header: header,
             hash_table: hash_table,
             block_table: block_table,
-            block_size: block_size,
+            sector_size: sector_size,
             offset: offset
         })
     }
@@ -233,7 +233,7 @@ impl Archive {
 
 impl fmt::Debug for Archive {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{\nfile: {:#?},\nheader: {:#?}\nsector_size:{}\n}}" , self.file, self.header, self.block_size)
+        write!(f, "{{\nfile: {:#?},\nheader: {:#?}\nsector_size:{}\n}}" , self.file, self.header, self.sector_size)
     }
 }
 
@@ -268,17 +268,17 @@ impl File {
         } else if block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
             return self.read_block(block.packed_size as usize, &mut archive.file, archive.offset, &block, buf);
         } else { // read as sector based MPQ file
-            return self.read_blocks(&mut archive.file, archive.offset, &block, buf, archive.block_size);
+            return self.read_blocks(&mut archive.file, archive.offset, &block, buf, archive.sector_size);
         }
     }
 
-    fn read_blocks(&self, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8], block_size: u32) -> Result<u64, Error> {
+    fn read_blocks(&self, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8], sector_size: u32) -> Result<u64, Error> {
         let mut sector_buff: Vec<u8> = vec![0; 4];
         let mut sector_offsets: Vec<u32> = Vec::new();
 
         try!(file.seek(SeekFrom::Start(block.offset as u64 + offset)));
 
-        let num_sectors = (block.unpacked_size / block_size) + 1;
+        let num_sectors = (block.unpacked_size / sector_size) + 1;
 
         for _ in 0..num_sectors + 1 {
             try!(file.read_exact(&mut sector_buff));
