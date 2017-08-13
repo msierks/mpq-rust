@@ -6,6 +6,7 @@ use std::io::{Error, ErrorKind};
 use std::io::SeekFrom;
 use std::mem;
 use std::path::Path;
+use adler32::RollingAdler32;
 use byteorder::{ByteOrder, LittleEndian};
 use crypt::{decrypt,hash_string};
 use compression::decompress;
@@ -21,6 +22,7 @@ const FILE_COMPRESS:    u32 = 0x00000200; // compress methods by multiple method
 const FILE_ENCRYPTED:   u32 = 0x00010000; // file is encrypted
 const FILE_PATCH_FILE:  u32 = 0x00100000; // file is a patch file. file data begins with patchinfo struct
 const FILE_SINGLE_UNIT: u32 = 0x01000000; // file is stored as single unit
+const FILE_SECTOR_CRC:  u32 = 0x04000000;
 
 #[derive(Debug)]
 struct Header {
@@ -77,7 +79,7 @@ impl UserDataHeader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Hash {
     /// file name hash part A
     hash_a: u32,
@@ -103,7 +105,7 @@ impl Hash {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Block {
     /// offset of the beginning of the file data, relative to the beginning of the archive
     offset: u32,
@@ -202,6 +204,8 @@ impl Archive {
 
         let sector_size = 512 << header.sector_size_shift;
 
+        // FixMe: attempt to load (attributes) for validation
+
         Ok(Archive {
             file: file,
             header: header,
@@ -212,7 +216,7 @@ impl Archive {
         })
     }
 
-    pub fn open_file(&self, filename: &str) -> Result<File, Error> {
+    pub fn open_file(&mut self, filename: &str) -> Result<File, Error> {
         let start_index = (hash_string(filename, 0x0) & (self.header.hash_table_count - 1)) as usize;
         let mut hash;
 
@@ -223,7 +227,51 @@ impl Archive {
             hash = &self.hash_table[i];
 
             if hash.hash_a == hash_a && hash.hash_b == hash_b {
-                return Ok(File::new(filename, i));
+                let block = &self.block_table[hash.block_index as usize];
+                let mut sector_offsets: Vec<u32> = Vec::new();
+                let mut sector_checksums: Vec<u32> = Vec::new();
+
+                // load sector offsets
+                if block.flags & FILE_SINGLE_UNIT == 0 { // block broken into senctors
+                    let mut buff: Vec<u8> = vec![0; 4];
+
+                    try!(self.file.seek(SeekFrom::Start(block.offset as u64 + self.offset)));
+
+                    let num_sectors = ((block.unpacked_size - 1) / self.sector_size) + 1;
+
+                    for _ in 0..num_sectors + 1 {
+                        try!(self.file.read_exact(&mut buff));
+
+                        sector_offsets.push(LittleEndian::read_u32(&buff));
+                    }
+
+                    // load sector checksums
+                    if block.flags & FILE_COMPRESS != 0 && block.flags & FILE_SECTOR_CRC != 0 {
+                        try!(self.file.read_exact(&mut buff));
+
+                        let last_offset = LittleEndian::read_u32(&buff);
+                        let checksum_offset = sector_offsets[num_sectors as usize];
+                        let packed_size = last_offset - checksum_offset;
+
+                        if packed_size > 3 && packed_size < (self.sector_size * 4) {
+                            try!(self.file.seek(SeekFrom::Start(block.offset as u64 + checksum_offset as u64)));
+
+                            for _ in 0..num_sectors {
+                                try!(self.file.read_exact(&mut buff));
+
+                                sector_checksums.push(LittleEndian::read_u32(&buff));
+                            }
+                        }
+                    }
+                }
+
+                return Ok(File {
+                    name: String::from(filename),
+                    hash: hash.clone(),
+                    block: block.clone(),
+                    sector_offsets: sector_offsets,
+                    sector_checksums: sector_checksums,
+                })
             }
         }
 
@@ -240,92 +288,114 @@ impl fmt::Debug for Archive {
 #[derive(Debug)]
 pub struct File {
     name: String,
-    index: usize,
+    hash: Hash,
+    block: Block,
+    sector_offsets: Vec<u32>,
+    sector_checksums: Vec<u32>,
 }
 
 impl File {
-    pub fn new(name: &str, index: usize) -> File {
-        File {
-            name: String::from(name),
-            index: index
-        }
-    }
-
-    pub fn size(&self, archive: &Archive) -> u32 {
-        let hash = &archive.hash_table[self.index];
-        let block = &archive.block_table[hash.block_index as usize];
-
-        block.unpacked_size
+    pub fn size(&self) -> u32 {
+        self.block.unpacked_size
     }
 
     // read data from file
     pub fn read(&self, archive: &mut Archive, buf: &mut [u8]) -> Result<u64, Error> {
-        let hash = &archive.hash_table[self.index];
-        let block = &archive.block_table[hash.block_index as usize];
-
-        if block.flags & FILE_PATCH_FILE != 0 {
+        if self.block.flags & FILE_PATCH_FILE != 0 {
             return Err(Error::new(ErrorKind::Other, "Patch file not supported"));
-        } else if block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
-            return self.read_block(block.packed_size as usize, &mut archive.file, archive.offset, &block, buf);
+        } else if self.block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
+            return self.read_single_unit_file(self.block.packed_size as usize, &mut archive.file, archive.offset, buf);
         } else { // read as sector based MPQ file
-            return self.read_blocks(&mut archive.file, archive.offset, &block, buf, archive.sector_size);
+            return self.read_sector_file(archive, buf);
         }
     }
 
-    fn read_blocks(&self, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8], sector_size: u32) -> Result<u64, Error> {
-        let mut sector_buff: Vec<u8> = vec![0; 4];
-        let mut sector_offsets: Vec<u32> = Vec::new();
+    fn read_sector_file(&self, archive: &mut Archive, out: &mut [u8]) -> Result<u64, Error> {
+        let mut buff: Vec<u8> = vec![0; archive.sector_size as usize];
+        let mut read: u64 = 0;
 
-        try!(file.seek(SeekFrom::Start(block.offset as u64 + offset)));
+        for i in 0..self.sector_offsets.len() - 1 {
+            let sector_offset = self.sector_offsets[i];
+            let sector_size   = self.sector_offsets[i+1] - sector_offset;
 
-        let num_sectors = (block.unpacked_size / sector_size) + 1;
+            let in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
+            let mut out_buf: &mut [u8] = &mut out[read as usize..];
 
-        for _ in 0..num_sectors + 1 {
-            try!(file.read_exact(&mut sector_buff));
+            try!(archive.file.seek(SeekFrom::Start(self.block.offset as u64 + sector_offset as u64 + archive.offset)));
 
-            sector_offsets.push(LittleEndian::read_u32(&sector_buff));
-        }
+            try!(archive.file.read_exact(in_buf));
 
-        let mut read:u64 = 0;
-        for i in 0..sector_offsets.len()-1 {
-            let sector_offset = sector_offsets[i];
-            let sector_size   = sector_offsets[i+1] - sector_offset;
+            if self.block.flags & FILE_ENCRYPTED != 0 {
+                return Err(Error::new(ErrorKind::Other, "Block encryption not supported"));
+            }
 
-            read += try!(self.read_block(sector_size as usize, file, sector_offset as u64, block, &mut out_buf[read as usize..]));
+            if self.block.flags & FILE_IMPLODE != 0 {
+                return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
+            }
+
+            if self.block.flags & FILE_COMPRESS != 0 {
+                // checksum verification
+                if self.sector_checksums.len() > 0 {
+
+                    let mut adler = RollingAdler32::from_value(0);
+
+                    adler.update_buffer(in_buf);
+
+                    if self.sector_checksums[i] != adler.hash() {
+                        return Err(Error::new(ErrorKind::Other, "Corrupt sector, checksum error"));
+                    }
+                }
+
+                if in_buf.len() == archive.sector_size as usize || in_buf.len() == out_buf.len() {
+                    for (dst, src) in out_buf.iter_mut().zip(in_buf) {
+                        *dst = *src;
+                        read += 1;
+                    }
+                } else {
+                    read += try!(decompress(in_buf, &mut out_buf));
+                }
+
+            } else {
+                for (dst, src) in out_buf.iter_mut().zip(in_buf) {
+                    *dst = *src
+                }
+
+                return Ok(self.block.unpacked_size as u64)
+            }
         }
 
         Ok(read)
     }
 
-    fn read_block(&self, buff_size: usize, file: &mut fs::File, offset: u64, block: &Block, out_buf: &mut [u8]) -> Result<u64, Error> {
+    fn read_single_unit_file(&self, buff_size: usize, file: &mut fs::File, offset: u64, out_buf: &mut [u8]) -> Result<u64, Error> {
         let mut in_buff: Vec<u8> = vec![0; buff_size];
 
-        try!(file.seek(SeekFrom::Start(block.offset as u64 + offset)));
+        try!(file.seek(SeekFrom::Start(self.block.offset as u64 + offset)));
 
         try!(file.read_exact(&mut in_buff));
 
-        if block.flags & FILE_ENCRYPTED != 0 {
+        if self.block.flags & FILE_ENCRYPTED != 0 {
             return Err(Error::new(ErrorKind::Other, "Block encryption not supported"));
         }
 
-        if block.flags & FILE_IMPLODE != 0 {
+        if self.block.flags & FILE_IMPLODE != 0 {
             return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
         }
 
-        if block.flags & FILE_COMPRESS != 0 {
+        if self.block.flags & FILE_COMPRESS != 0 {
             return decompress(&mut in_buff, out_buf);
         } else {
             for (dst, src) in out_buf.iter_mut().zip(&in_buff) {
                 *dst = *src
             }
 
-            return Ok(block.unpacked_size as u64)
+            return Ok(self.block.unpacked_size as u64)
         }
     }
 
     // extract file from archive to the local filesystem
     pub fn extract<P: AsRef<Path>>(&self, archive: &mut Archive, path: P) -> Result<bool, Error> {
-        let mut buf: Vec<u8> = vec![0; self.size(&archive) as usize];
+        let mut buf: Vec<u8> = vec![0; self.size() as usize];
 
         try!(self.read(archive, &mut buf));
 

@@ -29,7 +29,7 @@ fn list(archive_file_name: &str) {
         }
     };
 
-    let mut buf: Vec<u8> = vec![0; file.size(&archive) as usize];
+    let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
     match file.read(&mut archive, &mut buf) {
         Ok(_) => {},
