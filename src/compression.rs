@@ -12,7 +12,7 @@ const COMPRESSION_ADPCM_MONO:   u8 = 0x40;
 const COMPRESSION_ADPCM_STEREO: u8 = 0x80;
 const COMPRESSION_LZMA:         u8 = 0x12;
 
-pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<u64, Error> {
+pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<usize, Error> {
     let compression_type = data[0];
 
     if compression_type & COMPRESSION_BZIP2 != 0 {
@@ -23,7 +23,7 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<u64, Error> {
             Err(e) => return Err(Error::new(ErrorKind::Other, e))
         }
 
-        return Ok(decompress.total_out());
+        return Ok(decompress.total_out() as usize);
     }
 
     if compression_type & COMPRESSION_ZLIB != 0 {
@@ -34,7 +34,7 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<u64, Error> {
             Err(e) => return Err(Error::new(ErrorKind::Other, e))
         }
 
-        return Ok(zlib.total_out());
+        return Ok(zlib.total_out() as usize);
     }
 
     if compression_type & COMPRESSION_PKZIP != 0 {

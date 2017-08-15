@@ -254,6 +254,8 @@ mod test {
 
     #[test]
     fn hash() {
+        assert_eq!(0xC3AF3770, hash_string("(hash table)", 0x300));
+        assert_eq!(0xEC83B3A3, hash_string("(block table)", 0x300));
         assert_eq!(0x5F3DE859, hash_string("(listfile)", 0));
         assert_eq!(0xF4E6C69D, hash_string("arr\\units.dat", 0));
         assert_eq!(0xA26067F3, hash_string("unit\\neutral\\acritter.grp", 0));

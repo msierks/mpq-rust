@@ -204,8 +204,6 @@ impl Archive {
 
         let sector_size = 512 << header.sector_size_shift;
 
-        // FixMe: attempt to load (attributes) for validation
-
         Ok(Archive {
             file: file,
             header: header,
@@ -231,8 +229,8 @@ impl Archive {
                 let mut sector_offsets: Vec<u32> = Vec::new();
                 let mut sector_checksums: Vec<u32> = Vec::new();
 
-                // load sector offsets
-                if block.flags & FILE_SINGLE_UNIT == 0 { // block broken into senctors
+                // block split into sectors, read sector offsets
+                if block.flags & FILE_SINGLE_UNIT == 0 {
                     let mut buff: Vec<u8> = vec![0; 4];
 
                     try!(self.file.seek(SeekFrom::Start(block.offset as u64 + self.offset)));
@@ -249,11 +247,13 @@ impl Archive {
                     if block.flags & FILE_COMPRESS != 0 && block.flags & FILE_SECTOR_CRC != 0 {
                         try!(self.file.read_exact(&mut buff));
 
-                        let last_offset = LittleEndian::read_u32(&buff);
+                        let last_offset     = LittleEndian::read_u32(&buff);
                         let checksum_offset = sector_offsets[num_sectors as usize];
-                        let packed_size = last_offset - checksum_offset;
+                        let sector_size     = last_offset - checksum_offset;
+                        let expected_size   = num_sectors * mem::size_of::<u32>() as u32;
 
-                        if packed_size > 3 && packed_size < (self.sector_size * 4) {
+                        // is checksum sector the expected size
+                        if sector_size == expected_size {
                             try!(self.file.seek(SeekFrom::Start(block.offset as u64 + checksum_offset as u64)));
 
                             for _ in 0..num_sectors {
@@ -300,7 +300,7 @@ impl File {
     }
 
     // read data from file
-    pub fn read(&self, archive: &mut Archive, buf: &mut [u8]) -> Result<u64, Error> {
+    pub fn read(&self, archive: &mut Archive, buf: &mut [u8]) -> Result<usize, Error> {
         if self.block.flags & FILE_PATCH_FILE != 0 {
             return Err(Error::new(ErrorKind::Other, "Patch file not supported"));
         } else if self.block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
@@ -310,16 +310,16 @@ impl File {
         }
     }
 
-    fn read_sector_file(&self, archive: &mut Archive, out: &mut [u8]) -> Result<u64, Error> {
+    fn read_sector_file(&self, archive: &mut Archive, out: &mut [u8]) -> Result<usize, Error> {
         let mut buff: Vec<u8> = vec![0; archive.sector_size as usize];
-        let mut read: u64 = 0;
+        let mut read: usize = 0;
 
         for i in 0..self.sector_offsets.len() - 1 {
             let sector_offset = self.sector_offsets[i];
             let sector_size   = self.sector_offsets[i+1] - sector_offset;
 
             let in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
-            let mut out_buf: &mut [u8] = &mut out[read as usize..];
+            let mut out_buf: &mut [u8] = &mut out[read..];
 
             try!(archive.file.seek(SeekFrom::Start(self.block.offset as u64 + sector_offset as u64 + archive.offset)));
 
@@ -335,14 +335,14 @@ impl File {
 
             if self.block.flags & FILE_COMPRESS != 0 {
                 // checksum verification
-                if self.sector_checksums.len() > 0 {
+                if self.sector_checksums.len() > 0 && self.sector_checksums[i] != 0 {
 
                     let mut adler = RollingAdler32::from_value(0);
 
                     adler.update_buffer(in_buf);
 
                     if self.sector_checksums[i] != adler.hash() {
-                        return Err(Error::new(ErrorKind::Other, "Corrupt sector, checksum error"));
+                        return Err(Error::new(ErrorKind::Other, "Sector checksum error"));
                     }
                 }
 
@@ -360,14 +360,14 @@ impl File {
                     *dst = *src
                 }
 
-                return Ok(self.block.unpacked_size as u64)
+                return Ok(self.block.unpacked_size as usize)
             }
         }
 
         Ok(read)
     }
 
-    fn read_single_unit_file(&self, buff_size: usize, file: &mut fs::File, offset: u64, out_buf: &mut [u8]) -> Result<u64, Error> {
+    fn read_single_unit_file(&self, buff_size: usize, file: &mut fs::File, offset: u64, out_buf: &mut [u8]) -> Result<usize, Error> {
         let mut in_buff: Vec<u8> = vec![0; buff_size];
 
         try!(file.seek(SeekFrom::Start(self.block.offset as u64 + offset)));
@@ -389,7 +389,7 @@ impl File {
                 *dst = *src
             }
 
-            return Ok(self.block.unpacked_size as u64)
+            return Ok(self.block.unpacked_size as usize)
         }
     }
 
