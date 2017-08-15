@@ -235,6 +235,8 @@ impl Archive {
 
                     try!(self.file.seek(SeekFrom::Start(block.offset as u64 + self.offset)));
 
+                    // FixMe: handle empty files, packed and unpacked size should be 0
+
                     let num_sectors = ((block.unpacked_size - 1) / self.sector_size) + 1;
 
                     for _ in 0..num_sectors + 1 {
@@ -382,7 +384,7 @@ impl File {
             return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
         }
 
-        if self.block.flags & FILE_COMPRESS != 0 {
+        if self.block.flags & FILE_COMPRESS != 0 && out_buf.len() > in_buff.len() {
             return decompress(&mut in_buff, out_buf);
         } else {
             for (dst, src) in out_buf.iter_mut().zip(&in_buff) {
