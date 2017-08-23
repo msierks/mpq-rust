@@ -7,7 +7,7 @@ use std::env;
 use std::process;
 use std::str;
 
-fn print_usage(program: &str, opts: getopts::Options) {
+fn print_usage(program: &str, opts: &getopts::Options) {
     let brief = format!("Usage: {} [options] MPQ_FILE", program);
     print!("{}", opts.usage(&brief));
 }
@@ -57,14 +57,14 @@ fn main() {
     };
 
     if matches.opt_present("help") {
-        print_usage(&program, opts);
+        print_usage(&program, &opts);
         return;
     }
 
     let archive_file_name = if !matches.free.is_empty() {
         matches.free[0].clone()
     } else {
-        print_usage(&program, opts);
+        print_usage(&program, &opts);
         return;
     };
 

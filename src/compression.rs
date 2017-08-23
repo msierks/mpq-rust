@@ -61,5 +61,5 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<usize, Error> {
        println!("FixMe: COMPRESSION_LZMA");
     }
 
-    return Err(Error::new(ErrorKind::Other, "No compression type found"));
+    Err(Error::new(ErrorKind::Other, "No compression type found"))
 }

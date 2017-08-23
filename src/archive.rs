@@ -148,11 +148,11 @@ impl Archive {
 
             try!(file.read_exact(&mut buffer));
 
-            if buffer.starts_with(&ID_MPQA) {
+            if buffer.starts_with(ID_MPQA) {
                 break;
             }
 
-            if buffer.starts_with(&ID_MPQB) {
+            if buffer.starts_with(ID_MPQB) {
 
                 let user_data_header = try!(UserDataHeader::new(&buffer));
 
@@ -162,7 +162,7 @@ impl Archive {
 
                 try!(file.read_exact(&mut buffer));
 
-                if !buffer.starts_with(&ID_MPQA) {
+                if !buffer.starts_with(ID_MPQA) {
                     return Err(Error::new(ErrorKind::InvalidData, "Not a valid MPQ archive"));
                 }
 
@@ -304,11 +304,11 @@ impl File {
     // read data from file
     pub fn read(&self, archive: &mut Archive, buf: &mut [u8]) -> Result<usize, Error> {
         if self.block.flags & FILE_PATCH_FILE != 0 {
-            return Err(Error::new(ErrorKind::Other, "Patch file not supported"));
+            Err(Error::new(ErrorKind::Other, "Patch file not supported"))
         } else if self.block.flags & FILE_SINGLE_UNIT != 0 { // file is single block file
-            return self.read_single_unit_file(self.block.packed_size as usize, &mut archive.file, archive.offset, buf);
+            self.read_single_unit_file(self.block.packed_size as usize, &mut archive.file, archive.offset, buf)
         } else { // read as sector based MPQ file
-            return self.read_sector_file(archive, buf);
+            self.read_sector_file(archive, buf)
         }
     }
 
@@ -337,7 +337,7 @@ impl File {
 
             if self.block.flags & FILE_COMPRESS != 0 {
                 // checksum verification
-                if self.sector_checksums.len() > 0 && self.sector_checksums[i] != 0 {
+                if !self.sector_checksums.is_empty() && self.sector_checksums[i] != 0 {
 
                     let mut adler = RollingAdler32::from_value(0);
 
@@ -385,18 +385,18 @@ impl File {
         }
 
         if self.block.flags & FILE_COMPRESS != 0 && out_buf.len() > in_buff.len() {
-            return decompress(&mut in_buff, out_buf);
+            decompress(&mut in_buff, out_buf)
         } else {
             for (dst, src) in out_buf.iter_mut().zip(&in_buff) {
                 *dst = *src
             }
 
-            return Ok(self.block.unpacked_size as usize)
+            Ok(self.block.unpacked_size as usize)
         }
     }
 
     // extract file from archive to the local filesystem
-    pub fn extract<P: AsRef<Path>>(&self, archive: &mut Archive, path: P) -> Result<bool, Error> {
+    pub fn extract<P: AsRef<Path>>(&self, archive: &mut Archive, path: P) -> Result<usize, Error> {
         let mut buf: Vec<u8> = vec![0; self.size() as usize];
 
         try!(self.read(archive, &mut buf));
@@ -407,8 +407,6 @@ impl File {
 
         let mut file = fs::OpenOptions::new().create(true).write(true).open(&self.name).unwrap();
 
-        try!(file.write(&buf));
-
-        Ok(true)
+        file.write(&buf)
     }
 }

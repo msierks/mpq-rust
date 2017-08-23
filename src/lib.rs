@@ -1,5 +1,7 @@
 //! A library for reading MPQ archives
 
+#![cfg_attr(feature="cargo-clippy", allow(unreadable_literal))]
+
 extern crate adler32;
 extern crate byteorder;
 extern crate bzip2;

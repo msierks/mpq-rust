@@ -3,6 +3,7 @@ use archive::Archive;
 use std::path::Path;
 use std::io::{Error, ErrorKind};
 
+#[derive(Default)]
 pub struct Chain {
     chain: Vec<Archive>
 }
@@ -22,21 +23,18 @@ impl Chain {
     }
 
     pub fn read(&mut self, filename: &str) -> Result<Vec<u8>, Error> {
-        for mut archive in self.chain.iter_mut() {
-            match archive.open_file(filename) {
-                Ok(file) => {
-                    let mut buf: Vec<u8> = vec![0; file.size() as usize];
+        for mut archive in &mut self.chain.iter_mut() {
+            if let Ok(file) = archive.open_file(filename) {
+                let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
-                    match file.read(&mut archive, &mut buf) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            println!("{} {:#?}", e, archive);
-                        }
+                match file.read(&mut archive, &mut buf) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        println!("{} {:#?}", e, archive);
                     }
+                }
 
-                    return Ok(buf);
-                },
-                Err(_) => () // ignore errors
+                return Ok(buf);
             }
         }
 
