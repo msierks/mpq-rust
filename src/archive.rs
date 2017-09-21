@@ -12,7 +12,7 @@ use crypt::{decrypt,hash_string};
 use compression::decompress;
 
 const HEADER_SIZE: usize = 44;
-//const USER_HEADER_SIZE: usize = 16;
+const USER_HEADER_SIZE: usize = 16;
 
 const ID_MPQA: &'static [u8] = b"MPQ\x1A";
 const ID_MPQB: &'static [u8] = b"MPQ\x1B";
@@ -131,6 +131,7 @@ impl Block {
 pub struct Archive {
     file: fs::File,
     header: Header,
+    user_data_header: Option<UserDataHeader>,
     hash_table: Vec<Hash>,
     block_table: Vec<Block>,
     sector_size: u32,
@@ -142,6 +143,7 @@ impl Archive {
         let mut file = try!(fs::File::open(path));
         let mut buffer:[u8; HEADER_SIZE] = [0; HEADER_SIZE];
         let mut offset:u64 = 0;
+        let mut user_data_header = None;
 
         loop  {
             try!(file.seek(SeekFrom::Start(offset)));
@@ -154,9 +156,9 @@ impl Archive {
 
             if buffer.starts_with(ID_MPQB) {
 
-                let user_data_header = try!(UserDataHeader::new(&buffer));
+                let header = try!(UserDataHeader::new(&buffer));
 
-                offset += user_data_header.header_offset as u64;
+                offset += header.header_offset as u64;
 
                 try!(file.seek(SeekFrom::Start(offset)));
 
@@ -165,6 +167,8 @@ impl Archive {
                 if !buffer.starts_with(ID_MPQA) {
                     return Err(Error::new(ErrorKind::InvalidData, "Not a valid MPQ archive"));
                 }
+
+                user_data_header = Some(header);
 
                 break;
             }
@@ -207,6 +211,7 @@ impl Archive {
         Ok(Archive {
             file: file,
             header: header,
+            user_data_header: user_data_header,
             hash_table: hash_table,
             block_table: block_table,
             sector_size: sector_size,
@@ -278,6 +283,20 @@ impl Archive {
         }
 
         Err(Error::new(ErrorKind::NotFound, filename))
+    }
+
+    pub fn read_user_data(&mut self) -> Result<Option<Vec<u8>>, Error> {
+        match self.user_data_header {
+            Some(ref header) => {
+                let mut buf: Vec<u8> = vec![0; header.user_data_size as usize];
+
+                try!(self.file.seek(SeekFrom::Start(USER_HEADER_SIZE as u64)));
+                try!(self.file.read_exact(&mut buf));
+
+                Ok(Some(buf))
+            },
+            None => Ok(None)
+        }
     }
 }
 
