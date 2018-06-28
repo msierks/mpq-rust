@@ -1,11 +1,14 @@
 
 use bzip2;
 use flate2;
+use implode::symbol::DEFAULT_CODE_TABLE;
+use implode::exploder::Exploder;
 use std::io::{Error, ErrorKind};
+
 
 const COMPRESSION_HUFFMAN:      u8 = 0x01;
 const COMPRESSION_ZLIB:         u8 = 0x02;
-const COMPRESSION_PKZIP:        u8 = 0x08;
+const COMPRESSION_PKWARE:       u8 = 0x08;
 const COMPRESSION_BZIP2:        u8 = 0x10;
 const COMPRESSION_SPARSE:       u8 = 0x20;
 const COMPRESSION_ADPCM_MONO:   u8 = 0x40;
@@ -37,28 +40,49 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<usize, Error> {
         return Ok(zlib.total_out() as usize);
     }
 
-    if compression_type & COMPRESSION_PKZIP != 0 {
-        println!("FixMe: COMPRESSION_PKZIP");
+    if compression_type & COMPRESSION_PKWARE != 0 {
+        let mut exploder = Exploder::new(&DEFAULT_CODE_TABLE);
+
+        let mut cpos: u32 = 1;
+        let len = data.len();
+        let mut c = 0;
+
+        while !exploder.ended {
+            let abuf = &mut data[cpos as usize .. len];
+
+            let x = exploder.explode_block(abuf).unwrap();
+
+            cpos += x.0 as u32;
+
+            let bf = x.1;
+
+            for (d, s) in out.iter_mut().zip(bf.iter()) {
+                *d = *s;
+                c += 1;
+            }
+        }
+
+        return Ok(c)
     }
 
     if compression_type & COMPRESSION_HUFFMAN != 0 {
-        println!("FixMe: COMPRESSION_HUFFMAN");
+        return Err(Error::new(ErrorKind::Other, "Compression algorithm Huffman not supported"))
     }
 
     if compression_type & COMPRESSION_SPARSE != 0 {
-        println!("FixMe: COMPRESSION_SPARSE");
+        return Err(Error::new(ErrorKind::Other, "Compression algorithm Sparse not supported"))
     }
 
     if compression_type & COMPRESSION_ADPCM_STEREO != 0 {
-        println!("FixMe: COMPRESSION_ADPCM_STEREO");
+        return Err(Error::new(ErrorKind::Other, "Compression algorithm ADPCM Stereo not supported"))
     }
 
     if compression_type & COMPRESSION_ADPCM_MONO != 0 {
-        println!("FixMe: COMPRESSION_ADPCM_MONO");
+        return Err(Error::new(ErrorKind::Other, "Compression algorithm ADPCM Stereo not supported"))
     }
 
     if compression_type & COMPRESSION_LZMA != 0 {
-       println!("FixMe: COMPRESSION_LZMA");
+        return Err(Error::new(ErrorKind::Other, "Compression algorithm LZMA not supported"))
     }
 
     Err(Error::new(ErrorKind::Other, "No compression type found"))

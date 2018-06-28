@@ -11,7 +11,10 @@ use byteorder::{ByteOrder, LittleEndian};
 use crypt::{decrypt,hash_string};
 use compression::decompress;
 
-const HEADER_SIZE: usize = 44;
+const HEADER_SIZE_V1: usize = 0x20;
+//const HEADER_SIZE_V2: usize = 0x2C;
+//const HEADER_SIZE_V3: usize = 0x44;
+//const HEADER_SIZE_V4: usize = 0xD0;
 const USER_HEADER_SIZE: usize = 16;
 
 const ID_MPQA: &'static [u8] = b"MPQ\x1A";
@@ -20,6 +23,7 @@ const ID_MPQB: &'static [u8] = b"MPQ\x1B";
 const FILE_IMPLODE:     u32 = 0x00000100; // implode method by pkware compression library
 const FILE_COMPRESS:    u32 = 0x00000200; // compress methods by multiple methods
 const FILE_ENCRYPTED:   u32 = 0x00010000; // file is encrypted
+const FILE_FIX_KEY:     u32 = 0x00020000; // file decryption key is altered according to position of file in archive
 const FILE_PATCH_FILE:  u32 = 0x00100000; // file is a patch file. file data begins with patchinfo struct
 const FILE_SINGLE_UNIT: u32 = 0x01000000; // file is stored as single unit
 const FILE_SECTOR_CRC:  u32 = 0x04000000;
@@ -39,10 +43,11 @@ struct Header {
     extended_offset: u64,
     hash_table_offset_high: u16,
     block_table_offset_high: u16,
+    // ToDo: Header v3 and v4
 }
 
 impl Header {
-    pub fn new(src: &[u8; HEADER_SIZE]) -> Result<Header, Error> {
+    pub fn new(src: &[u8; HEADER_SIZE_V1]) -> Result<Header, Error> {
         Ok(Header {
             magic: [src[0], src[1], src[2], src[3]],
             header_size: LittleEndian::read_u32(&src[0x04..]),
@@ -53,9 +58,9 @@ impl Header {
             block_table_offset: LittleEndian::read_u32(&src[0x14..]),
             hash_table_count: LittleEndian::read_u32(&src[0x18..]),
             block_table_count: LittleEndian::read_u32(&src[0x1C..]),
-            extended_offset: LittleEndian::read_u64(&src[0x20..]),
-            hash_table_offset_high: LittleEndian::read_u16(&src[0x28..]),
-            block_table_offset_high: LittleEndian::read_u16(&src[0x2A..]),
+            extended_offset: 0,
+            hash_table_offset_high: 0,
+            block_table_offset_high: 0,
         })
     }
 }
@@ -141,7 +146,7 @@ pub struct Archive {
 impl Archive {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Archive, Error> {
         let mut file = try!(fs::File::open(path));
-        let mut buffer:[u8; HEADER_SIZE] = [0; HEADER_SIZE];
+        let mut buffer:[u8; HEADER_SIZE_V1] = [0; HEADER_SIZE_V1];
         let mut offset:u64 = 0;
         let mut user_data_header = None;
 
@@ -225,6 +230,7 @@ impl Archive {
 
         let hash_a = hash_string(filename, 0x100);
         let hash_b = hash_string(filename, 0x200);
+        let mut file_key = 0;
 
         for i in start_index..self.hash_table.len() {
             hash = &self.hash_table[i];
@@ -234,24 +240,44 @@ impl Archive {
                 let mut sector_offsets: Vec<u32> = Vec::new();
                 let mut sector_checksums: Vec<u32> = Vec::new();
 
+                // file if encrypted, generate decryption key
+                if block.flags & FILE_ENCRYPTED != 0 {
+                    match filename.split('\\').last() {
+                        Some(basename) => file_key = hash_string(basename, 0x300),
+                        None => return Err(Error::new(ErrorKind::Other, "Unable to extract filename from path")),
+                    }
+
+                    // fix decryption key
+                    if block.flags & FILE_FIX_KEY != 0 {
+                        file_key = (file_key + (block.offset as u32)) ^ block.unpacked_size;
+                    }
+                }
+
                 // block split into sectors, read sector offsets
                 if block.flags & FILE_SINGLE_UNIT == 0 {
-                    let mut buff: Vec<u8> = vec![0; 4];
-
-                    try!(self.file.seek(SeekFrom::Start(block.offset as u64 + self.offset)));
-
                     // FixMe: handle empty files, packed and unpacked size should be 0
 
                     let num_sectors = ((block.unpacked_size - 1) / self.sector_size) + 1;
 
-                    for _ in 0..num_sectors + 1 {
-                        try!(self.file.read_exact(&mut buff));
+                    let mut sector_buff: Vec<u8> = vec![0; ((num_sectors as usize) + 1) * 4];
 
-                        sector_offsets.push(LittleEndian::read_u32(&buff));
+                    try!(self.file.seek(SeekFrom::Start(block.offset as u64 + self.offset)));
+                    try!(self.file.read_exact(&mut sector_buff));
+
+                    if block.flags & FILE_ENCRYPTED != 0 {
+                        decrypt(&mut sector_buff, file_key - 1);
+                    }
+
+                    let mut x = 0;
+                    while x < sector_buff.len() - 3 {
+                        sector_offsets.push(LittleEndian::read_u32(&sector_buff[x..]));
+                        x += 4;
                     }
 
                     // load sector checksums
                     if block.flags & FILE_COMPRESS != 0 && block.flags & FILE_SECTOR_CRC != 0 {
+                        let mut buff: Vec<u8> = vec![0; 4];
+
                         try!(self.file.read_exact(&mut buff));
 
                         let last_offset     = LittleEndian::read_u32(&buff);
@@ -278,6 +304,7 @@ impl Archive {
                     block: block.clone(),
                     sector_offsets: sector_offsets,
                     sector_checksums: sector_checksums,
+                    file_key: file_key,
                 })
             }
         }
@@ -313,6 +340,7 @@ pub struct File {
     block: Block,
     sector_offsets: Vec<u32>,
     sector_checksums: Vec<u32>,
+    file_key: u32,
 }
 
 impl File {
@@ -335,26 +363,27 @@ impl File {
         let mut buff: Vec<u8> = vec![0; archive.sector_size as usize];
         let mut read: usize = 0;
 
-        for i in 0..self.sector_offsets.len() - 1 {
-            let sector_offset = self.sector_offsets[i];
-            let sector_size   = self.sector_offsets[i+1] - sector_offset;
+        if self.block.flags & FILE_COMPRESS != 0 {
 
-            let in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
-            let mut out_buf: &mut [u8] = &mut out[read..];
+            for i in 0..self.sector_offsets.len() - 1 {
+                let sector_offset = self.sector_offsets[i];
+                let sector_size   = self.sector_offsets[i+1] - sector_offset;
 
-            try!(archive.file.seek(SeekFrom::Start(self.block.offset as u64 + sector_offset as u64 + archive.offset)));
+                let mut in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
+                let mut out_buf: &mut [u8] = &mut out[read..];
 
-            try!(archive.file.read_exact(in_buf));
+                try!(archive.file.seek(SeekFrom::Start(self.block.offset as u64 + sector_offset as u64 + archive.offset)));
 
-            if self.block.flags & FILE_ENCRYPTED != 0 {
-                return Err(Error::new(ErrorKind::Other, "Block encryption not supported"));
-            }
+                try!(archive.file.read_exact(in_buf));
 
-            if self.block.flags & FILE_IMPLODE != 0 {
-                return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
-            }
+                if self.block.flags & FILE_ENCRYPTED != 0 {
+                    decrypt(&mut in_buf, self.file_key + i as u32);
+                }
 
-            if self.block.flags & FILE_COMPRESS != 0 {
+                if self.block.flags & FILE_IMPLODE != 0 {
+                    return Err(Error::new(ErrorKind::Other, "PKware compression not supported"));
+                }
+
                 // checksum verification
                 if !self.sector_checksums.is_empty() && self.sector_checksums[i] != 0 {
 
@@ -375,14 +404,13 @@ impl File {
                 } else {
                     read += try!(decompress(in_buf, &mut out_buf));
                 }
-
-            } else {
-                for (dst, src) in out_buf.iter_mut().zip(in_buf) {
-                    *dst = *src
-                }
-
-                return Ok(self.block.unpacked_size as usize)
             }
+
+        } else {
+            try!(archive.file.seek(SeekFrom::Start(self.block.offset as u64 + archive.offset)));
+            try!(archive.file.read_exact(out));
+
+            read = out.len();
         }
 
         Ok(read)
@@ -396,7 +424,7 @@ impl File {
         try!(file.read_exact(&mut in_buff));
 
         if self.block.flags & FILE_ENCRYPTED != 0 {
-            return Err(Error::new(ErrorKind::Other, "Block encryption not supported"));
+            decrypt(&mut in_buff, self.file_key);
         }
 
         if self.block.flags & FILE_IMPLODE != 0 {

@@ -6,6 +6,7 @@ extern crate adler32;
 extern crate byteorder;
 extern crate bzip2;
 extern crate flate2;
+extern crate implode;
 
 mod archive;
 mod crypt;
