@@ -5,7 +5,7 @@ A library for reading MPQ archives.
 ```toml
 # Cargo.toml
 [dependencies]
-mpq = "0.3"
+mpq = "0.5"
 ```
 
 ## Reading an archive
