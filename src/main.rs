@@ -3,6 +3,8 @@ use std::env;
 use std::process;
 use std::str;
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 fn print_usage(program: &str, opts: &getopts::Options) {
     let brief = format!("Usage: {} [options] MPQ_FILE", program);
     print!("{}", opts.usage(&brief));
@@ -45,12 +47,18 @@ fn main() {
 
     opts.optopt("x", "extract", "extract file from archive", "FILE");
     opts.optflag("l", "list", "print (listfile) contents");
+    opts.optflag("v", "version", "print version info");
     opts.optflag("h", "help", "print this help menu");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
         Err(f) => panic!(f.to_string()),
     };
+
+    if matches.opt_present("version") {
+        println!("{} {}", program, VERSION);
+        return;
+    }
 
     if matches.opt_present("help") {
         print_usage(&program, &opts);
