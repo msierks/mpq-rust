@@ -1,17 +1,11 @@
 //! A library for reading MPQ archives
 
-#![cfg_attr(feature="cargo-clippy", allow(unreadable_literal))]
-
-extern crate adler32;
-extern crate byteorder;
-extern crate bzip2;
-extern crate flate2;
-extern crate implode;
+#![cfg_attr(feature = "cargo-clippy", allow(unreadable_literal))]
 
 mod archive;
-mod crypt;
 mod chain;
 mod compression;
+mod crypt;
 
-pub use archive::{Archive,File};
-pub use chain::Chain;
+pub use crate::archive::{Archive, File};
+pub use crate::chain::Chain;

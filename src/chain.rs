@@ -1,24 +1,21 @@
-
-use archive::Archive;
-use std::path::Path;
+use crate::archive::Archive;
 use std::io::{Error, ErrorKind};
+use std::path::Path;
 
 #[derive(Default)]
 pub struct Chain {
-    chain: Vec<Archive>
+    chain: Vec<Archive>,
 }
 
 impl Chain {
     pub fn new() -> Self {
-        Chain {
-            chain: Vec::new() 
-        }
+        Chain { chain: Vec::new() }
     }
 
     pub fn add<P: AsRef<Path>>(&mut self, path: P) {
         match Archive::open(path) {
             Ok(v) => self.chain.insert(0, v),
-            Err(e) => panic!("{:?}", e)
+            Err(e) => panic!("{:?}", e),
         }
     }
 
@@ -28,7 +25,7 @@ impl Chain {
                 let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
                 match file.read(&mut archive, &mut buf) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         println!("{} {:#?}", e, archive);
                     }
@@ -38,18 +35,19 @@ impl Chain {
             }
         }
 
-        Err(Error::new(ErrorKind::NotFound, "File not found in mpq chain"))
+        Err(Error::new(
+            ErrorKind::NotFound,
+            "File not found in mpq chain",
+        ))
     }
 
     pub fn read_to_string(&mut self, filename: &str) -> Result<String, Error> {
         match self.read(filename) {
-            Ok(buf) => {
-                match String::from_utf8(buf) {
-                    Ok(v) => Ok(v),
-                    Err(_) => Err(Error::new(ErrorKind::InvalidData, "Utf8Error"))
-                }
+            Ok(buf) => match String::from_utf8(buf) {
+                Ok(v) => Ok(v),
+                Err(_) => Err(Error::new(ErrorKind::InvalidData, "Utf8Error")),
             },
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 }

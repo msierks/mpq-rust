@@ -1,7 +1,3 @@
-
-extern crate getopts;
-extern crate mpq;
-
 use mpq::Archive;
 use std::env;
 use std::process;
@@ -32,7 +28,7 @@ fn list(archive_file_name: &str) {
     let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
     match file.read(&mut archive, &mut buf) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             println!("{}", e);
             process::exit(1);
@@ -53,7 +49,7 @@ fn main() {
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string())
+        Err(f) => panic!(f.to_string()),
     };
 
     if matches.opt_present("help") {
@@ -85,7 +81,7 @@ fn main() {
         let file = archive.open_file(&filename).unwrap();
 
         match file.extract(&mut archive, &filename) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 println!("{}", e);
                 process::exit(1);

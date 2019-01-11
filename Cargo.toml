@@ -9,6 +9,7 @@ repository = "https://github.com/msierks/mpq-rust"
 readme = "README.md"
 keywords = ["mpq", "archive"]
 include = ["src/*", "Cargo.toml", "LICENSE", "README.md"]
+edition = "2018"
 
 [[bin]]
 name = "mpq"
