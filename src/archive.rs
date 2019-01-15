@@ -46,8 +46,8 @@ struct Header {
 }
 
 impl Header {
-    pub fn new(src: &[u8; HEADER_SIZE_V1]) -> Result<Header, Error> {
-        Ok(Header {
+    pub fn new(src: &[u8; HEADER_SIZE_V1]) -> Header {
+        Header {
             magic: [src[0], src[1], src[2], src[3]],
             header_size: LittleEndian::read_u32(&src[0x04..]),
             archive_size: LittleEndian::read_u32(&src[0x08..]),
@@ -60,7 +60,7 @@ impl Header {
             extended_offset: 0,
             hash_table_offset_high: 0,
             block_table_offset_high: 0,
-        })
+        }
     }
 }
 
@@ -73,13 +73,13 @@ struct UserDataHeader {
 }
 
 impl UserDataHeader {
-    pub fn new(src: &[u8]) -> Result<UserDataHeader, Error> {
-        Ok(UserDataHeader {
+    pub fn new(src: &[u8]) -> UserDataHeader {
+        UserDataHeader {
             magic: [src[0], src[1], src[2], src[3]],
             user_data_size: LittleEndian::read_u32(&src[0x4..]),
             header_offset: LittleEndian::read_u32(&src[0x8..]),
             user_data_header_size: LittleEndian::read_u32(&src[0xC..]),
-        })
+        }
     }
 }
 
@@ -159,9 +159,9 @@ impl Archive {
             }
 
             if buffer.starts_with(ID_MPQB) {
-                let header = UserDataHeader::new(&buffer)?;
+                let header = UserDataHeader::new(&buffer);
 
-                offset += header.header_offset as u64;
+                offset += u64::from(header.header_offset);
 
                 file.seek(SeekFrom::Start(offset))?;
 
@@ -182,14 +182,16 @@ impl Archive {
             offset += 0x200;
         }
 
-        let header = Header::new(&buffer)?;
+        let header = Header::new(&buffer);
 
         // read hash table
         let mut hash_buff: Vec<u8> =
             vec![0; (header.hash_table_count as usize) * mem::size_of::<Hash>()];
         let mut hash_table: Vec<Hash> = Vec::with_capacity(header.hash_table_count as usize);
 
-        file.seek(SeekFrom::Start(header.hash_table_offset as u64 + offset))?;
+        file.seek(SeekFrom::Start(
+            u64::from(header.hash_table_offset) + offset,
+        ))?;
 
         file.read_exact(&mut hash_buff)?;
 
@@ -204,7 +206,9 @@ impl Archive {
             vec![0; (header.block_table_count as usize) * mem::size_of::<Block>()];
         let mut block_table: Vec<Block> = Vec::with_capacity(header.block_table_count as usize);
 
-        file.seek(SeekFrom::Start(header.block_table_offset as u64 + offset))?;
+        file.seek(SeekFrom::Start(
+            u64::from(header.block_table_offset) + offset,
+        ))?;
 
         file.read_exact(&mut block_buff)?;
 
@@ -273,7 +277,7 @@ impl Archive {
                     let mut sector_buff: Vec<u8> = vec![0; ((num_sectors as usize) + 1) * 4];
 
                     self.file
-                        .seek(SeekFrom::Start(block.offset as u64 + self.offset))?;
+                        .seek(SeekFrom::Start(u64::from(block.offset) + self.offset))?;
                     self.file.read_exact(&mut sector_buff)?;
 
                     if block.flags & FILE_ENCRYPTED != 0 {
@@ -300,7 +304,7 @@ impl Archive {
                         // is checksum sector the expected size
                         if sector_size == expected_size {
                             self.file.seek(SeekFrom::Start(
-                                block.offset as u64 + checksum_offset as u64,
+                                u64::from(block.offset) + u64::from(checksum_offset),
                             ))?;
 
                             for _ in 0..num_sectors {
@@ -397,7 +401,7 @@ impl File {
                 let mut out_buf: &mut [u8] = &mut out[read..];
 
                 archive.file.seek(SeekFrom::Start(
-                    self.block.offset as u64 + sector_offset as u64 + archive.offset,
+                    u64::from(self.block.offset) + u64::from(sector_offset) + archive.offset,
                 ))?;
 
                 archive.file.read_exact(in_buf)?;
@@ -434,9 +438,9 @@ impl File {
                 }
             }
         } else {
-            archive
-                .file
-                .seek(SeekFrom::Start(self.block.offset as u64 + archive.offset))?;
+            archive.file.seek(SeekFrom::Start(
+                u64::from(self.block.offset) + archive.offset,
+            ))?;
             archive.file.read_exact(out)?;
 
             read = out.len();
@@ -454,7 +458,7 @@ impl File {
     ) -> Result<usize, Error> {
         let mut in_buff: Vec<u8> = vec![0; buff_size];
 
-        file.seek(SeekFrom::Start(self.block.offset as u64 + offset))?;
+        file.seek(SeekFrom::Start(u64::from(self.block.offset) + offset))?;
 
         file.read_exact(&mut in_buff)?;
 
