@@ -3,7 +3,7 @@ use std::env;
 use std::process;
 use std::str;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_usage(program: &str, opts: &getopts::Options) {
     let brief = format!("Usage: {} [options] MPQ_FILE", program);

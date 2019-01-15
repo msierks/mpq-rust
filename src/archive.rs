@@ -16,8 +16,8 @@ const HEADER_SIZE_V1: usize = 0x20;
 //const HEADER_SIZE_V4: usize = 0xD0;
 const USER_HEADER_SIZE: usize = 16;
 
-const ID_MPQA: &'static [u8] = b"MPQ\x1A";
-const ID_MPQB: &'static [u8] = b"MPQ\x1B";
+const ID_MPQA: &[u8] = b"MPQ\x1A";
+const ID_MPQB: &[u8] = b"MPQ\x1B";
 
 const FILE_IMPLODE: u32 = 0x00000100; // implode method by pkware compression library
 const FILE_COMPRESS: u32 = 0x00000200; // compress methods by multiple methods
@@ -219,13 +219,13 @@ impl Archive {
         let sector_size = 512 << header.sector_size_shift;
 
         Ok(Archive {
-            file: file,
-            header: header,
-            user_data_header: user_data_header,
-            hash_table: hash_table,
-            block_table: block_table,
-            sector_size: sector_size,
-            offset: offset,
+            file,
+            header,
+            user_data_header,
+            hash_table,
+            block_table,
+            sector_size,
+            offset,
         })
     }
 
@@ -316,9 +316,9 @@ impl Archive {
                     name: String::from(filename),
                     hash: hash.clone(),
                     block: block.clone(),
-                    sector_offsets: sector_offsets,
-                    sector_checksums: sector_checksums,
-                    file_key: file_key,
+                    sector_offsets,
+                    sector_checksums,
+                    file_key,
                 });
             }
         }
