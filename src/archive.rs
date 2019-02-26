@@ -253,7 +253,7 @@ impl Archive {
 
                 // file if encrypted, generate decryption key
                 if block.flags & FILE_ENCRYPTED != 0 {
-                    match filename.split('\\').last() {
+                    match filename.split(&['\\', '/'][..]).last() {
                         Some(basename) => file_key = hash_string(basename, 0x300),
                         None => {
                             return Err(Error::new(
