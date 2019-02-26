@@ -38,7 +38,7 @@ fn list(archive_file_name: &str) {
         }
     }
 
-    print!("{}", str::from_utf8(&buf).unwrap());
+    io::stdout().write_all(&buf).unwrap();
 }
 
 fn main() {
