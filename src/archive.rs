@@ -1,4 +1,4 @@
-use crate::compression::decompress;
+use crate::compression::*;
 use crate::crypt::{decrypt, hash_string};
 use adler32::RollingAdler32;
 use byteorder::{ByteOrder, LittleEndian};
@@ -26,6 +26,7 @@ const FILE_FIX_KEY: u32 = 0x00020000; // file decryption key is altered accordin
 const FILE_PATCH_FILE: u32 = 0x00100000; // file is a patch file. file data begins with patchinfo struct
 const FILE_SINGLE_UNIT: u32 = 0x01000000; // file is stored as single unit
 const FILE_SECTOR_CRC: u32 = 0x04000000;
+const FILE_COMPRESS_MASK: u32 = 0x0000FF00;
 
 #[derive(Debug)]
 struct Header {
@@ -258,7 +259,7 @@ impl Archive {
                             return Err(Error::new(
                                 ErrorKind::Other,
                                 "Unable to extract filename from path",
-                            ))
+                            ));
                         }
                     }
 
@@ -392,7 +393,7 @@ impl File {
         let mut buff: Vec<u8> = vec![0; archive.sector_size as usize];
         let mut read: usize = 0;
 
-        if self.block.flags & FILE_COMPRESS != 0 {
+        if self.block.flags & FILE_COMPRESS_MASK != 0 {
             for i in 0..self.sector_offsets.len() - 1 {
                 let sector_offset = self.sector_offsets[i];
                 let sector_size = self.sector_offsets[i + 1] - sector_offset;
@@ -410,13 +411,6 @@ impl File {
                     decrypt(&mut in_buf, self.file_key + i as u32);
                 }
 
-                if self.block.flags & FILE_IMPLODE != 0 {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        "PKware compression not supported",
-                    ));
-                }
-
                 // checksum verification
                 if !self.sector_checksums.is_empty() && self.sector_checksums[i] != 0 {
                     let mut adler = RollingAdler32::from_value(0);
@@ -428,13 +422,26 @@ impl File {
                     }
                 }
 
-                if in_buf.len() == archive.sector_size as usize || in_buf.len() == out_buf.len() {
-                    for (dst, src) in out_buf.iter_mut().zip(in_buf) {
-                        *dst = *src;
-                        read += 1;
+                if self.block.flags & FILE_COMPRESS != 0 {
+                    if in_buf.len() == archive.sector_size as usize || in_buf.len() == out_buf.len()
+                    {
+                        for (dst, src) in out_buf.iter_mut().zip(in_buf) {
+                            *dst = *src;
+                            read += 1;
+                        }
+                    } else {
+                        read += decompress(in_buf, &mut out_buf)?;
                     }
-                } else {
-                    read += decompress(in_buf, &mut out_buf)?;
+                } else if self.block.flags & FILE_IMPLODE != 0 {
+                    if in_buf.len() == archive.sector_size as usize || in_buf.len() == out_buf.len()
+                    {
+                        for (dst, src) in out_buf.iter_mut().zip(in_buf) {
+                            *dst = *src;
+                            read += 1;
+                        }
+                    } else {
+                        read += explode(in_buf, &mut out_buf)?;
+                    }
                 }
             }
         } else {
@@ -466,15 +473,10 @@ impl File {
             decrypt(&mut in_buff, self.file_key);
         }
 
-        if self.block.flags & FILE_IMPLODE != 0 {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "PKware compression not supported",
-            ));
-        }
-
         if self.block.flags & FILE_COMPRESS != 0 && out_buf.len() > in_buff.len() {
             decompress(&mut in_buff, out_buf)
+        } else if self.block.flags & FILE_IMPLODE != 0 {
+            explode(&mut in_buff, out_buf)
         } else {
             for (dst, src) in out_buf.iter_mut().zip(&in_buff) {
                 *dst = *src
