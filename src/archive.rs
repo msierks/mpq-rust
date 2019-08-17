@@ -499,7 +499,7 @@ impl File {
         let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(&self.name)
+            .open(&path)
             .unwrap();
 
         file.write(&buf)
