@@ -492,6 +492,8 @@ impl File {
 
         self.read(archive, &mut buf)?;
 
+        fs::create_dir_all(path.as_ref().parent().unwrap())?;
+
         if path.as_ref().exists() {
             return Err(Error::new(ErrorKind::AlreadyExists, "File already exists"));
         }
@@ -499,7 +501,7 @@ impl File {
         let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(&self.name)
+            .open(&path)
             .unwrap();
 
         file.write(&buf)
