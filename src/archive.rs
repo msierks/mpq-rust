@@ -273,6 +273,10 @@ impl Archive {
                 if block.flags & FILE_SINGLE_UNIT == 0 {
                     // FixMe: handle empty files, packed and unpacked size should be 0
 
+                    if block.unpacked_size == 0  || self.sector_size == 0 {
+                        return Err(Error::new(ErrorKind::UnexpectedEof, filename));
+                    }
+
                     let num_sectors = ((block.unpacked_size - 1) / self.sector_size) + 1;
 
                     let mut sector_buff: Vec<u8> = vec![0; ((num_sectors as usize) + 1) * 4];
