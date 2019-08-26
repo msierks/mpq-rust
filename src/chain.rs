@@ -89,7 +89,7 @@ impl Chain {
 
     // extract file from archive to the local filesystem
     pub fn extract<P: AsRef<Path>>(&mut self, filename: &str, path: P) -> Result<usize, Error> {
-        for mut archive in &mut self.chain.iter_mut() {
+        for archive in &mut self.chain.iter_mut() {
             let file = match archive.open_file(filename) {
                 Ok(f) => f,
                 Err(_) => continue
