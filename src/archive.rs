@@ -4,7 +4,7 @@ use adler32::RollingAdler32;
 use byteorder::{ByteOrder, LittleEndian};
 use std::fmt;
 use std::fs;
-use std::io::prelude::*;
+use std::io::{prelude::*, Cursor};
 use std::io::SeekFrom;
 use std::io::{Error, ErrorKind};
 use std::mem;
@@ -134,7 +134,7 @@ impl Block {
 }
 
 pub struct Archive {
-    file: fs::File,
+    file: Cursor<[u8; 32]>,
     header: Header,
     user_data_header: Option<UserDataHeader>,
     hash_table: Vec<Hash>,
@@ -145,10 +145,19 @@ pub struct Archive {
 
 impl Archive {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Archive, Error> {
-        let mut file = fs::File::open(path)?;
+        let mut file = fs::File::open(&path).expect("no file found");
+        let metadata = fs::metadata(&path).expect("unable to read metadata");
+        let mut buf = vec![0; metadata.len() as usize];
+        file.read(&mut buf).expect("buffer overflow");
+        Self::load(buf)
+    }
+
+    pub fn load(mut buf: Vec<u8>) -> Result<Archive, Error> 
+    {
         let mut buffer: [u8; HEADER_SIZE_V1] = [0; HEADER_SIZE_V1];
         let mut offset: u64 = 0;
         let mut user_data_header = None;
+        let mut file = Cursor::new(buf);
 
         loop {
             file.seek(SeekFrom::Start(offset))?;
@@ -463,7 +472,7 @@ impl File {
     fn read_single_unit_file(
         &self,
         buff_size: usize,
-        file: &mut fs::File,
+        file: &mut Cursor<[u8; 32]>,
         offset: u64,
         out_buf: &mut [u8],
     ) -> Result<usize, Error> {
