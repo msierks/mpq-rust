@@ -1,7 +1,7 @@
 use crate::archive::Archive;
+use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
-use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Chain {
@@ -92,7 +92,7 @@ impl Chain {
         for archive in &mut self.chain.iter_mut() {
             let file = match archive.open_file(filename) {
                 Ok(f) => f,
-                Err(_) => continue
+                Err(_) => continue,
             };
 
             return file.extract(archive, path);
