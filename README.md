@@ -1,4 +1,4 @@
-# mpq-rust [![Build Status](https://travis-ci.org/msierks/mpq-rust.svg?branch=master)](https://travis-ci.org/msierks/mpq-rust) [![Documentation](https://docs.rs/mpq/badge.svg)](https://docs.rs/mpq)
+# mpq-rust [![Documentation](https://docs.rs/mpq/badge.svg)](https://docs.rs/mpq)
 
 A library for reading MPQ archives.
 
