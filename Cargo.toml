@@ -18,7 +18,7 @@ doc = false
 [dependencies]
 adler32 = "1.0"
 byteorder = "1.0"
-bzip2 = "0.3"
-flate2 = "0.2"
+bzip2-rs = "0.1.2"
+flate2 = "1.0.27"
 getopts = "0.2"
 implode = "0.1"

@@ -1,8 +1,8 @@
-use bzip2;
+use bzip2_rs as bzip2;
 use flate2;
 use implode::exploder::Exploder;
 use implode::symbol::DEFAULT_CODE_TABLE;
-use std::io::{Error, ErrorKind};
+use std::io::{self, Error, ErrorKind};
 
 const COMPRESSION_HUFFMAN: u8 = 0x01;
 const COMPRESSION_ZLIB: u8 = 0x02;
@@ -17,20 +17,16 @@ pub fn decompress(data: &mut [u8], out: &mut [u8]) -> Result<usize, Error> {
     let compression_type = data[0];
 
     if compression_type & COMPRESSION_BZIP2 != 0 {
-        let mut decompress = bzip2::Decompress::new(true);
-
-        match decompress.decompress(&data[1..], out) {
-            Ok(_) => {}
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        }
-
-        return Ok(decompress.total_out() as usize);
+        let mut ouput = io::Cursor::new(out);
+        let mut reader = bzip2::DecoderReader::new(&data[1..]);
+        io::copy(&mut reader, &mut ouput)?;
+        return Ok(ouput.position() as usize);
     }
 
     if compression_type & COMPRESSION_ZLIB != 0 {
         let mut zlib = flate2::Decompress::new(true);
 
-        match zlib.decompress(&data[1..], out, flate2::Flush::None) {
+        match zlib.decompress(&data[1..], out, flate2::FlushDecompress::None) {
             Ok(_) => {}
             Err(e) => return Err(Error::new(ErrorKind::Other, e)),
         }
