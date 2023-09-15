@@ -27,11 +27,11 @@ impl Chain {
     }
 
     pub fn read(&mut self, filename: &str) -> Result<Vec<u8>, Error> {
-        for mut archive in &mut self.chain.iter_mut() {
+        for archive in &mut self.chain.iter_mut() {
             if let Ok(file) = archive.open_file(filename) {
                 let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
-                match file.read(&mut archive, &mut buf) {
+                match file.read(archive, &mut buf) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{} {:#?}", e, archive);
@@ -51,11 +51,11 @@ impl Chain {
     pub fn list(&mut self) -> Result<Vec<String>, Error> {
         let mut contents: HashSet<String> = HashSet::new();
 
-        for mut archive in &mut self.chain.iter_mut() {
+        for archive in &mut self.chain.iter_mut() {
             if let Ok(file) = archive.open_file("(listfile)") {
                 let mut buf: Vec<u8> = vec![0; file.size() as usize];
 
-                match file.read(&mut archive, &mut buf) {
+                match file.read(archive, &mut buf) {
                     Ok(_) => {}
                     Err(e) => return Err(e),
                 };

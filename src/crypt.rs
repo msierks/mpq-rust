@@ -168,7 +168,7 @@ pub fn hash_string(key: &str, offset: u32) -> u32 {
     let mut seed2: u32 = 0xeeeeeeee;
     let mut ch;
 
-    for c in key.replace("/", "\\").chars() {
+    for c in key.replace('/', "\\").chars() {
         ch = c.to_uppercase().next().unwrap() as u32;
         seed1 = CRYPT_TABLE[(offset.wrapping_add(ch)) as usize] ^ (seed1.wrapping_add(seed2));
         seed2 = ch

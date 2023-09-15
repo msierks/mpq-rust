@@ -1,5 +1,4 @@
 use bzip2_rs as bzip2;
-use flate2;
 use implode::exploder::Exploder;
 use implode::symbol::DEFAULT_CODE_TABLE;
 use std::io::{self, Error, ErrorKind};

@@ -30,56 +30,56 @@ const FILE_COMPRESS_MASK: u32 = 0x0000FF00;
 
 #[derive(Debug)]
 struct Header {
-    magic: [u8; 4],
-    header_size: u32,
-    archive_size: u32,
-    format_version: u16, // 0 = Original, 1 = Extended
+    _magic: [u8; 4],
+    _header_size: u32,
+    _archive_size: u32,
+    _format_version: u16, // 0 = Original, 1 = Extended
     sector_size_shift: u16,
     hash_table_offset: u32,
     block_table_offset: u32,
     hash_table_count: u32,
     block_table_count: u32,
     // Header v2
-    extended_offset: u64,
-    hash_table_offset_high: u16,
-    block_table_offset_high: u16,
+    _extended_offset: u64,
+    _hash_table_offset_high: u16,
+    _block_table_offset_high: u16,
     // ToDo: Header v3 and v4
 }
 
 impl Header {
     pub fn new(src: &[u8; HEADER_SIZE_V1]) -> Header {
         Header {
-            magic: [src[0], src[1], src[2], src[3]],
-            header_size: LittleEndian::read_u32(&src[0x04..]),
-            archive_size: LittleEndian::read_u32(&src[0x08..]),
-            format_version: LittleEndian::read_u16(&src[0x0C..]),
+            _magic: [src[0], src[1], src[2], src[3]],
+            _header_size: LittleEndian::read_u32(&src[0x04..]),
+            _archive_size: LittleEndian::read_u32(&src[0x08..]),
+            _format_version: LittleEndian::read_u16(&src[0x0C..]),
             sector_size_shift: LittleEndian::read_u16(&src[0x0E..]),
             hash_table_offset: LittleEndian::read_u32(&src[0x10..]),
             block_table_offset: LittleEndian::read_u32(&src[0x14..]),
             hash_table_count: LittleEndian::read_u32(&src[0x18..]),
             block_table_count: LittleEndian::read_u32(&src[0x1C..]),
-            extended_offset: 0,
-            hash_table_offset_high: 0,
-            block_table_offset_high: 0,
+            _extended_offset: 0,
+            _hash_table_offset_high: 0,
+            _block_table_offset_high: 0,
         }
     }
 }
 
 #[derive(Debug)]
 struct UserDataHeader {
-    magic: [u8; 4],
+    _magic: [u8; 4],
     user_data_size: u32,
     header_offset: u32,
-    user_data_header_size: u32,
+    _user_data_header_size: u32,
 }
 
 impl UserDataHeader {
     pub fn new(src: &[u8]) -> UserDataHeader {
         UserDataHeader {
-            magic: [src[0], src[1], src[2], src[3]],
+            _magic: [src[0], src[1], src[2], src[3]],
             user_data_size: LittleEndian::read_u32(&src[0x4..]),
             header_offset: LittleEndian::read_u32(&src[0x8..]),
-            user_data_header_size: LittleEndian::read_u32(&src[0xC..]),
+            _user_data_header_size: LittleEndian::read_u32(&src[0xC..]),
         }
     }
 }
@@ -91,9 +91,9 @@ struct Hash {
     /// file name hash part B
     hash_b: u32,
     /// language of file using windows LANGID type
-    locale: u16,
+    _locale: u16,
     /// platform file is used for
-    platform: u16,
+    _platform: u16,
     /// index into the block table of file
     block_index: u32,
 }
@@ -103,8 +103,8 @@ impl Hash {
         Hash {
             hash_a: LittleEndian::read_u32(src),
             hash_b: LittleEndian::read_u32(&src[4..]),
-            locale: LittleEndian::read_u16(&src[8..]),
-            platform: LittleEndian::read_u16(&src[10..]),
+            _locale: LittleEndian::read_u16(&src[8..]),
+            _platform: LittleEndian::read_u16(&src[10..]),
             block_index: LittleEndian::read_u32(&src[12..]),
         }
     }
@@ -148,7 +148,7 @@ impl Archive {
         let mut file = fs::File::open(&path).expect("no file found");
         let metadata = fs::metadata(&path).expect("unable to read metadata");
         let mut buf = vec![0; metadata.len() as usize];
-        file.read(&mut buf).expect("buffer overflow");
+        file.read_exact(&mut buf).expect("buffer overflow");
         Self::load(buf)
     }
 
@@ -273,7 +273,7 @@ impl Archive {
 
                     // fix decryption key
                     if block.flags & FILE_FIX_KEY != 0 {
-                        file_key = (file_key + (block.offset as u32)) ^ block.unpacked_size;
+                        file_key = (file_key + (block.offset)) ^ block.unpacked_size;
                     }
                 }
 
@@ -330,8 +330,8 @@ impl Archive {
                 }
 
                 return Ok(File {
-                    name: String::from(filename),
-                    hash: hash.clone(),
+                    _name: String::from(filename),
+                    _hash: hash.clone(),
                     block: block.clone(),
                     sector_offsets,
                     sector_checksums,
@@ -370,8 +370,8 @@ impl fmt::Debug for Archive {
 
 #[derive(Debug)]
 pub struct File {
-    name: String,
-    hash: Hash,
+    _name: String,
+    _hash: Hash,
     block: Block,
     sector_offsets: Vec<u32>,
     sector_checksums: Vec<u32>,
@@ -410,8 +410,8 @@ impl File {
                 let sector_offset = self.sector_offsets[i];
                 let sector_size = self.sector_offsets[i + 1] - sector_offset;
 
-                let mut in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
-                let mut out_buf: &mut [u8] = &mut out[read..];
+                let in_buf: &mut [u8] = &mut buff[0..sector_size as usize];
+                let out_buf: &mut [u8] = &mut out[read..];
 
                 archive.file.seek(SeekFrom::Start(
                     u64::from(self.block.offset) + u64::from(sector_offset) + archive.offset,
@@ -420,7 +420,7 @@ impl File {
                 archive.file.read_exact(in_buf)?;
 
                 if self.block.flags & FILE_ENCRYPTED != 0 {
-                    decrypt(&mut in_buf, self.file_key + i as u32);
+                    decrypt(in_buf, self.file_key + i as u32);
                 }
 
                 // checksum verification
@@ -442,7 +442,7 @@ impl File {
                             read += 1;
                         }
                     } else {
-                        read += decompress(in_buf, &mut out_buf)?;
+                        read += decompress(in_buf, out_buf)?;
                     }
                 } else if self.block.flags & FILE_IMPLODE != 0 {
                     if in_buf.len() == archive.sector_size as usize || in_buf.len() == out_buf.len()
@@ -452,7 +452,7 @@ impl File {
                             read += 1;
                         }
                     } else {
-                        read += explode(in_buf, &mut out_buf)?;
+                        read += explode(in_buf, out_buf)?;
                     }
                 }
             }

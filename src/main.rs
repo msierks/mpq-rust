@@ -75,7 +75,7 @@ fn main() {
     };
 
     if matches.opt_present("list") {
-        list(&archive_file_name.clone());
+        list(&archive_file_name);
         return;
     }
 
